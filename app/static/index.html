@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replenishment Copilot</title>
+<style>
+:root{--bg:#f1f3f2;--panel:#fff;--ink:#14191c;--mute:#5d686e;--line:#d9dfdd;--risk:#c4202c;--warn:#b36b00;--ok:#1d7a4b;--accent:#14191c;--bar:#9fb0ab}
+@media (prefers-color-scheme:dark){:root{--bg:#101315;--panel:#171c1f;--ink:#e8edec;--mute:#93a09c;--line:#2a3236;--risk:#ff6b73;--warn:#e2a03f;--ok:#4cc38a;--accent:#e8edec;--bar:#4d5d58}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.num{font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;justify-content:space-between;padding:20px 28px;border-bottom:1px solid var(--line)}
+h1{font-size:20px;margin:0;letter-spacing:-.01em}
+.chips{display:flex;gap:8px;flex-wrap:wrap;color:var(--mute);font-size:13px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:2px 10px;background:var(--panel)}
+main{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;padding:20px 28px;max-width:1500px;margin:auto}
+@media (max-width:1000px){main{grid-template-columns:1fr;padding:16px}header{padding:16px}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;min-width:0}
+section.wide{grid-column:1/-1}
+h2{font-size:16px;margin:0 0 4px}
+.sub{color:var(--mute);font-size:13px;margin:0 0 12px}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--mute);font-size:12.5px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.tag{font-size:12.5px;font-weight:600}
+.STOCKOUT_RISK{color:var(--risk)}.EXPIRY_RISK{color:var(--warn)}.EXCESS_STOCK,.SLOW_MOVING{color:var(--mute)}
+.cover{position:relative;width:150px;height:10px;background:var(--line);border-radius:2px}
+.cover i{position:absolute;left:0;top:0;bottom:0;background:var(--bar);border-radius:2px}
+.cover b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+.legend{font-size:12.5px;color:var(--mute);margin-top:8px}
+button{font:inherit;cursor:pointer;border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:4px;padding:7px 14px}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+button:disabled{opacity:.5;cursor:wait}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+textarea,input{font:inherit;width:100%;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:4px;padding:8px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.answer{white-space:pre-wrap;margin-top:12px;font-size:14px}
+details{margin-top:10px;font-size:13px;color:var(--mute)}
+details pre{white-space:pre-wrap;word-break:break-word;margin:6px 0;font-size:12px}
+.po{border:1px solid var(--line);border-radius:4px;padding:10px 12px;margin-bottom:10px}
+.po header{padding:0;border:0;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.st-pending{color:var(--warn)}.st-approved{color:var(--ok)}.st-rejected,.st-superseded{color:var(--mute)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.kpi small{display:block;color:var(--mute);font-size:12.5px}.kpi strong{font-size:20px}
+.empty{color:var(--mute);font-size:14px}
+.err{color:var(--risk);font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Replenishment Copilot</h1>
+  <div class="chips"><span class="chip" id="chipMode">checking…</span><span class="chip" id="chipData"></span></div>
+</header>
+<main>
+  <section>
+    <h2>Products that need attention</h2>
+    <p class="sub">Ranked by risk score. The bar shows days of cover; the dark tick marks the supplier lead time.</p>
+    <div class="scroll"><table id="risk"><thead><tr><th>Product</th><th>Issue</th><th>Cover vs lead time</th><th>Stock</th><th>Value at risk</th></tr></thead><tbody></tbody></table></div>
+    <div class="legend" id="riskLegend"></div>
+  </section>
+
+  <section>
+    <h2>Ask the copilot</h2>
+    <p class="sub">The copilot calls the forecasting, risk and replenishment tools, then drafts purchase orders for your approval.</p>
+    <textarea id="goal" rows="3" placeholder="Run a full inventory review and draft purchase orders"></textarea>
+    <div class="row"><button id="run">Run inventory review</button><span class="sub" id="runStatus" style="margin:0"></span></div>
+    <div class="answer" id="answer"></div>
+    <details id="traceBox" hidden><summary>Tool calls (<span id="traceN">0</span>)</summary><div id="trace"></div></details>
+  </section>
+
+  <section class="wide">
+    <h2>Purchase orders awaiting approval</h2>
+    <p class="sub">The copilot can only create drafts. Approving needs the approver key.</p>
+    <div class="row" style="margin:0 0 12px"><label for="key" class="sub" style="margin:0">Approver key</label><input id="key" type="password" value="demo-approver" style="max-width:220px"><button class="ghost" id="reset">Clear queue</button></div>
+    <div id="pos"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Measured effect (last 12 weeks replay)</h2>
+    <p class="sub" id="btSub">Copilot policy compared with a static min/max rule.</p>
+    <div class="kpis" id="bt"></div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s),money=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const label={STOCKOUT_RISK:'Stockout risk',EXPIRY_RISK:'Expiry risk',EXCESS_STOCK:'Excess stock',SLOW_MOVING:'Slow moving'};
+async function api(p,o){const r=await fetch(p,o);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j}
+
+async function loadHealth(){const h=await api('/api/health'),o=await api('/api/overview');
+  $('#chipMode').textContent=h.llm_enabled?('Copilot model: '+h.model):'Offline mode (no model key set)';
+  $('#chipData').textContent=o.skus+' products · '+o.suppliers+' suppliers · as of '+o.as_of}
+async function loadRisk(){const r=await api('/api/risk?top_n=12');const tb=$('#risk tbody');
+  tb.innerHTML=r.top.map(x=>{const max=Math.max(x.days_cover,x.lead_time_days*2,30);
+    const w=Math.min(100,100*x.days_cover/max),t=100*x.lead_time_days/max;
+    return `<tr><td>${esc(x.name)}<br><span class="sub num" style="margin:0">${x.sku} · ${x.supplier_id}</span></td>
+    <td><span class="tag ${x.primary_reason}">${label[x.primary_reason]||x.primary_reason}</span></td>
+    <td><div class="cover" title="${x.days_cover} days cover, lead time ${x.lead_time_days} days"><i style="width:${w}%"></i><b style="left:${t}%"></b></div><span class="num">${x.days_cover}d / ${x.lead_time_days}d</span></td>
+    <td class="num">${money(x.stock)}</td><td class="num">${money(x.value_at_risk)}</td></tr>`}).join('');
+  $('#riskLegend').textContent=r.flagged+' of '+r.total_skus+' products flagged.'}
+async function loadPOs(){const {purchase_orders:p}=await api('/api/pos');const el=$('#pos');
+  if(!p.length){el.innerHTML='<div class="empty">No purchase orders yet. Run an inventory review to create drafts.</div>';return}
+  el.innerHTML=p.filter(x=>x.status!=='superseded').map(x=>`<div class="po"><header><strong>#${x.id} ${esc(x.supplier_name)}</strong>
+   <span><span class="st-${x.status} tag">${x.status}</span> · <span class="num">${money(x.total_cost)}</span></span></header>
+   <div class="scroll"><table><tbody>${x.lines.map(l=>`<tr><td>${esc(l.name)}</td><td class="num">${l.qty} units</td><td class="num">${money(l.line_cost)}</td>
+   <td class="sub" style="margin:0">${esc(l.forecast_method)}, WAPE ${l.forecast_wape}</td></tr>`).join('')}</tbody></table></div>
+   ${x.warnings.map(w=>`<div class="err">${esc(w)}</div>`).join('')}
+   ${x.status==='pending'?`<div class="row"><button data-a="approve" data-id="${x.id}">Approve order</button><button class="ghost" data-a="reject" data-id="${x.id}">Reject</button></div>`:`<div class="sub">Decided by ${esc(x.decided_by||'')} at ${esc(x.decided_at||'')}</div>`}</div>`).join('')}
+$('#pos').addEventListener('click',async e=>{const b=e.target.closest('button[data-a]');if(!b)return;
+  try{await api(`/api/pos/${b.dataset.id}/${b.dataset.a}`,{method:'POST',headers:{'X-Approver-Key':$('#key').value,'Content-Type':'application/json'},body:'{}'});await loadPOs()}
+  catch(err){alert(err.message)}});
+$('#reset').onclick=async()=>{try{await api('/api/demo/reset',{method:'POST',headers:{'X-Approver-Key':$('#key').value}});await loadPOs()}catch(e){alert(e.message)}};
+$('#run').onclick=async()=>{const b=$('#run');b.disabled=true;$('#runStatus').textContent='Working…';$('#answer').textContent='';
+  try{const r=await api('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal:$('#goal').value||null})});
+    $('#answer').textContent=r.answer;$('#runStatus').textContent=(r.mode==='llm'?'Model: '+r.model:'Offline mode')+' · '+r.seconds+'s';
+    $('#traceBox').hidden=false;$('#traceN').textContent=r.trace.length;
+    $('#trace').innerHTML=r.trace.map(t=>`<pre><b>${t.step}. ${esc(t.tool)}</b> ${esc(JSON.stringify(t.args))}\n${esc(t.result_preview)}</pre>`).join('');
+    await loadPOs()}catch(e){$('#answer').innerHTML='<div class="err">'+esc(e.message)+'</div>';$('#runStatus').textContent=''}
+  b.disabled=false};
+async function loadBT(){const r=await api('/api/backtest');if(!r.available){$('#bt').innerHTML='<div class="empty">'+esc(r.hint)+'</div>';return}
+  const d=r.delta,a=r.agentic,s=r.static;
+  const k=[['Fill rate',(a.fill_rate*100).toFixed(1)+'%','static '+(s.fill_rate*100).toFixed(1)+'%'],
+   ['Lost sales avoided',d.stockout_reduction_pct+'%',money(d.stockout_units_avoided)+' units'],
+   ['Average inventory value',(d.inventory_value_change_pct>0?'+':'')+d.inventory_value_change_pct+'%','vs static rule'],
+   ['Net cost saving',money(d.net_cost_saving),'holding + lost margin'],
+   ['Forecast error (WAPE)',(a.next_week_wape*100).toFixed(1)+'%','static '+(s.next_week_wape*100).toFixed(1)+'%']];
+  $('#bt').innerHTML=k.map(x=>`<div class="kpi"><small>${x[0]}</small><strong class="num">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
+  $('#btSub').textContent='Replay of the last '+r.config.days+' days on '+r.config.skus+' products. '+r.config.caveat}
+Promise.all([loadHealth(),loadRisk(),loadPOs(),loadBT()]).catch(e=>{$('#chipMode').textContent='API error: '+e.message});
+</script>
+</body>
+</html>

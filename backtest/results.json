@@ -1,0 +1,42 @@
+{
+  "config": {
+    "days": 84,
+    "service_level": 0.95,
+    "review_days": 7,
+    "skus": 34,
+    "holding_rate": 0.25,
+    "caveat": "Synthetic sample data; sales used as demand (no censoring). Re-run on real data before quoting."
+  },
+  "agentic": {
+    "fill_rate": 0.9875,
+    "lost_units": 1707,
+    "stockout_sku_days": 55.0,
+    "avg_inventory_value": 23001.51,
+    "holding_cost": 1323.37,
+    "lost_margin": 1841.5,
+    "total_cost": 3164.87,
+    "orders": 367,
+    "next_week_wape": 0.2912
+  },
+  "static": {
+    "fill_rate": 0.9269,
+    "lost_units": 10002,
+    "stockout_sku_days": 277.0,
+    "avg_inventory_value": 33928.64,
+    "holding_cost": 1952.06,
+    "lost_margin": 14700.67,
+    "total_cost": 16652.73,
+    "orders": 116,
+    "next_week_wape": 0.2827
+  },
+  "delta": {
+    "stockout_units_avoided": 8295,
+    "stockout_reduction_pct": 82.9,
+    "inventory_value_change_pct": -32.2,
+    "lost_margin_recovered": 12859.17,
+    "net_cost_saving": 13487.86,
+    "net_cost_saving_pct": 81.0,
+    "fill_rate_gain_pts": 6.06,
+    "forecast_wape_improvement_pts": -0.85
+  }
+}
