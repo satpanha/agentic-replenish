@@ -1,0 +1,9 @@
+node_modules/
+.venv/
+var/
+.git/
+frontend/dist/
+.taste-skill/
+test-results/
+playwright-report/
+*.zip

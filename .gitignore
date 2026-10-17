@@ -1,5 +1,18 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Python / local
 .env
 var/
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+.taste-skill/
+frontend/dist/

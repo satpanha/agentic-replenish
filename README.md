@@ -22,11 +22,33 @@ pip install -r requirements.txt
 python -m app.data_gen                 # (re)generate sample data, already included
 python -m backtest.run_backtest        # writes backtest/results.json (shown in the dashboard)
 cp .env.example .env                   # fill LLM_BASE_URL / LLM_API_KEY / LLM_MODEL from AMD Token Factory
+npm install && npm run build           # compile the TypeScript frontend (npm run dev: rebuild on save)
 uvicorn app.main:app --reload          # http://localhost:8000
 pytest -q                              # 8 tests
 # or: docker compose up --build
 ```
 With no `LLM_*` variables the app runs in **offline mode** (same tools, templated explanation) so nothing breaks.
+
+## Frontend: StockPulse AMD
+`/` serves the app from the `frontend/` folder. It is written in **TypeScript** (strict mode): sources in `frontend/src/`, compiled by `tsc` into `frontend/dist/` (`npm run build`, `npm run dev` to watch, `npm run typecheck`). There is no bundler; the browser loads the compiled ES modules directly, and an import map points `animejs` at `frontend/vendor/`. The original console stays at `/console`.
+
+| Page | What it does | Data source |
+|---|---|---|
+| Overview | Briefing, metrics, priority purchasing, forecast, alerts | `GET /api/dashboard` |
+| Inventory | Every SKU, filters, bulk add, product drawer | `GET /api/dashboard` |
+| Demand Forecasts | Forecast + 80% interval, SMA-14 baseline, holdout WAPE/MAE/RMSE/MAPE/bias, drivers | `GET /api/forecast/{sku}` |
+| Risk Radar | Stockout, overstock/expiry, margin erosion, lead-time and budget risks by fixed rules | dashboard + optimizer + inbox (`js/data/risk.js`) |
+| Supplier Inbox | Intake, review and confirmation of supplier documents | sample fixtures (simulated extraction); confirmed values via `POST /api/supplier-updates` |
+| Purchasing Cart | Editable lines, pack/MOQ/budget/supplier-minimum validation, what-if simulator, PO drafts | `POST /api/optimize`, `POST /api/pos/drafts` |
+| Purchase Orders | List, detail, approval history, printable preview | `/api/pos`, `/api/pos/{id}/{submit,approve,reject,mark_sent,acknowledge,cancel}` |
+| Settings | Budget, engine policy, data import/reset, confirmed updates, integration status | `/api/data/*`, `/api/health` |
+
+Tests: `pytest -q` (engine and API) and `npm test` (type-check, then Playwright: the frontend's calculations plus the full Phase 2 demo journey in Chromium against a real engine on a throwaway database).
+
+Purchase orders: draft → submit → approve, or **return for revision** with a required note. Approval is blocked until the pre-approval checks pass (whole cases, MOQs, totals add up, supplier minimum; changed trusted prices are flagged). Dispatch through email, webhook or Evolus is **simulated only** and recorded as such; it never marks an order sent. "Record that I sent it" is for orders you sent yourself.
+
+Honesty rules built into the UI: the budget optimizer (`app/tools/budget.py`) is a stated greedy heuristic, not a MILP solver. Document extraction is simulated on sample fixtures; your own files are reviewed by hand. The assistant (`POST /api/assistant`) answers deterministically, lists the functions it ran, and lets an LLM only rephrase when one is configured (rewording that introduces new numbers is rejected). "Sent" and "acknowledged" are recorded by a person; nothing is transmitted.
+Code layout (`frontend/`): `css/tokens.css` → `components.css` → `shell.css` / `overview.css` / `pages.css`; `src/data/*` (API, types, calculations, demo fixtures), `src/state.ts` (store + actions), `src/ui/*` (shell, chart, drawers, dialog, assistant), `src/lib/*` (helpers, `motion.ts` on Anime.js), `src/pages/*`. Docker compiles the frontend in a Node build stage.
 
 ## Why it satisfies Track 3
 | Requirement | Where |

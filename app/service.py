@@ -7,15 +7,26 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from app import config
+from app import config, store
 from app.tools import forecast as fc_tool
 from app.tools import replenish as rep_tool
 from app.tools import risk as risk_tool
 
 
+IMPORTED_DIR_NAME = "data_imported"
+
+
+def active_data_dir() -> Path:
+    """Imported CSVs (var/data_imported) win over the bundled sample once a complete set exists."""
+    imp = config.DB_PATH.parent / IMPORTED_DIR_NAME
+    if all((imp / f).exists() for f in ("sales.csv", "inventory.csv", "suppliers.csv")):
+        return imp
+    return config.DATA_DIR
+
+
 class Engine:
     def __init__(self, data_dir: Path | None = None):
-        self.data_dir = Path(data_dir or config.DATA_DIR)
+        self.data_dir = Path(data_dir or active_data_dir())
         self.load()
 
     def load(self) -> None:
@@ -23,10 +34,31 @@ class Engine:
         self.sales = pd.read_csv(d / "sales.csv", parse_dates=["date"])
         self.inv = pd.read_csv(d / "inventory.csv", keep_default_na=False)
         self.sup = pd.read_csv(d / "suppliers.csv")
+        self.applied_updates = self._apply_confirmed_updates()
         self.today = (self.sales["date"].max() + timedelta(days=1)).date()
         piv = self.sales.pivot_table(index="date", columns="sku", values="units", aggfunc="sum").sort_index().fillna(0)
         self.series = {sku: piv[sku].values for sku in piv.columns}
         self._fc_cache: dict = {}
+
+    def _apply_confirmed_updates(self) -> list[dict]:
+        """Confirmed supplier-document values replace the CSV values (latest confirmation wins)."""
+        applied = []
+        for u in store.list_updates():
+            if u["sku"] and u["field"] in store.SKU_FIELDS:
+                m = (self.inv["sku"] == u["sku"]) & (self.inv["supplier_id"] == u["supplier_id"])
+                if m.any():
+                    self.inv.loc[m, u["field"]] = int(u["new_value"]) if u["field"] != "unit_cost" else float(u["new_value"])
+                    applied.append(u)
+            elif u["field"] in store.SUPPLIER_FIELDS:
+                m = self.sup["supplier_id"] == u["supplier_id"]
+                if m.any():
+                    self.sup.loc[m, u["field"]] = float(u["new_value"])
+                    applied.append(u)
+        return applied
+
+    @property
+    def is_sample(self) -> bool:
+        return self.data_dir.resolve() == Path(config.DATA_DIR).resolve()
 
     # ---- tool 1 -------------------------------------------------------
     def forecast(self, sku: str):
@@ -49,7 +81,7 @@ class Engine:
         flagged = df[df.primary_reason != "OK"]
         counts = flagged["primary_reason"].value_counts().to_dict()
         return {"as_of": self.today.isoformat(), "total_skus": int(len(df)), "flagged": int(len(flagged)),
-                "counts_by_reason": counts, "top": flagged.head(int(top_n)).to_dict("records")}
+                "counts_by_reason": counts, "top": flagged.head(int(top_n)).astype(object).where(flagged.notna(), None).to_dict("records")}
 
     # ---- tool 3 -------------------------------------------------------
     def replenish(self, service_level: float | None = None, review_days: int | None = None, supplier_id: str | None = None) -> dict:
@@ -75,4 +107,11 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         _engine = Engine()
+    return _engine
+
+
+def reload_engine() -> Engine:
+    """Re-read data and confirmed updates (after an import or a supplier-update confirmation)."""
+    global _engine
+    _engine = Engine()
     return _engine

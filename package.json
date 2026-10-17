@@ -1,0 +1,26 @@
+{
+  "name": "amd",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc -p frontend",
+    "dev": "tsc -p frontend --watch --preserveWatchOutput",
+    "typecheck": "tsc -p frontend --noEmit",
+    "vendor:anime": "cp node_modules/animejs/dist/bundles/anime.esm.min.js frontend/vendor/anime.esm.min.js",
+    "test": "npm run typecheck && playwright test",
+    "test:e2e": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "animejs": "^4.5.0"
+  }
+}
